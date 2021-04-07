@@ -9,8 +9,8 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/tidwall/gjson"
 )
 
@@ -40,10 +40,6 @@ type matchup struct {
 	PeriodID   int64 `json:"period_id"`
 }
 
-const leagueID = 57860403
-const swidCkie = "{C36EA600-DE29-4AC3-B0E2-94069370EC1D}"
-const espns2Ckie = "AECninTC3IGAkv47ONJa%2B8bLbqom2yMJq2LwmSL9fRYCqiSwU8GUKeYV76wL4HR%2B2utBq9YlOJd3kl8FV3tv2FmaKMhdgkHm4pmAbuWLQrCpPW0tvqZYvGb8oH3ju1H3vgZ5vcmJic1Y4AURBGS1PSf7Fw5ACEk6itkWM4Qx66dPrBaRu8VVVsWQabh%2FGTLx8z0a8L%2B5c6N4M1IHGJT9RhKNq3a%2FnAjY6Q5jh75eZQvh393994x0N9OJElk2qYtziEefAnH1bD1KarSbz%2FQ92fIJ"
-
 var matchupPeriods = map[int][]string{
 	1:  {"1", "2", "4", "5", "6"},
 	2:  {"7", "8", "9", "10", "11", "12", "13"},
@@ -64,7 +60,17 @@ var matchupPeriods = map[int][]string{
 }
 
 func main() {
-	start := time.Now()
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatalln("Unable to load env variables. Make sure you have a .env file in the current directory")
+	}
+	leagueID := os.Getenv("LEAGUE_ID")
+	swidCkie := os.Getenv("SWID_COOKIE")
+	espns2Ckie := os.Getenv("ESPNS2_COOKIE")
+	if leagueID == "" || swidCkie == "" || espns2Ckie == "" {
+		log.Fatalln("LEAGUE_ID, SWID_COOKIE and ESPNS2_COOKIE env vars must be set")
+	}
+
 	args := os.Args[1:]
 	if len(args) != 2 {
 		log.Fatalln("Please specify two arguments with a lower and upper bound")
@@ -80,12 +86,27 @@ func main() {
 
 	for matchupID := lowerMatchupID; matchupID <= upperMatchupID; matchupID++ {
 		wg.Add(1)
-		handleMatchup(matchupID, &wg)
+		go handleMatchup(matchupID, &wg)
 	}
 
 	wg.Wait()
-	elapsed := time.Since(start)
-	log.Printf("Binomial took %s", elapsed)
+}
+
+func leagueID() int {
+	l, err := strconv.Atoi(os.Getenv("LEAGUE_ID"))
+	if err != nil {
+		log.Fatalln("LEAGUE_ID must be a valid integer", err)
+	}
+
+	return l
+}
+
+func swidCkie() string {
+	return os.Getenv("SWID_COOKIE")
+}
+
+func espns2Ckie() string {
+	return os.Getenv("ESPNS2_COOKIE")
 }
 
 func parseMatchupID(arg string) int {
@@ -167,19 +188,21 @@ func handleMatchup(matchupID int, wg *sync.WaitGroup) {
 			log.Fatalln("error writing record to file", err)
 		}
 	}
+
+  fmt.Println("Matchup " + strconv.Itoa(matchupID) + " done")
 }
 
 func getScorings(matchupID int, scoringPeriods []string) ([]scoring, []matchup) {
 	swidCookie := &http.Cookie{
 		Name:  "swid",
-		Value: swidCkie,
+		Value: swidCkie(),
 	}
 	espns2Cookie := &http.Cookie{
 		Name:  "espn_s2",
-		Value: espns2Ckie,
+		Value: espns2Ckie(),
 	}
 
-	url := fmt.Sprintf("https://fantasy.espn.com/apis/v3/games/fba/seasons/2021/segments/0/leagues/%d?&view=mBoxscore&view=mMatchupScore&view=mRoster&view=mSettings&view=mStatus&view=mTeam&view=modular&view=mNav", leagueID)
+	url := fmt.Sprintf("https://fantasy.espn.com/apis/v3/games/fba/seasons/2021/segments/0/leagues/%d?&view=mBoxscore&view=mMatchupScore&view=mRoster&view=mSettings&view=mStatus&view=mTeam&view=modular&view=mNav", leagueID())
 	req, err := http.NewRequest("GET", url, nil)
 	req.Header.Set("x-fantasy-filter", fmt.Sprintf("{\"schedule\":{\"filterMatchupPeriodIds\":{\"value\":[%d]}}}", matchupID))
 	req.AddCookie(swidCookie)
@@ -246,16 +269,16 @@ func getScorings(matchupID int, scoringPeriods []string) ([]scoring, []matchup) 
 func getPlayersScorings(matchupID int, scoringPeriods []string) []playerScoring {
 	swidCookie := &http.Cookie{
 		Name:  "swid",
-		Value: swidCkie,
+		Value: swidCkie(),
 	}
 	espns2Cookie := &http.Cookie{
 		Name:  "espn_s2",
-		Value: espns2Ckie,
+		Value: espns2Ckie(),
 	}
 
 	records := []playerScoring{}
 	for _, scoringPeriod := range scoringPeriods {
-		url := fmt.Sprintf("https://fantasy.espn.com/apis/v3/games/fba/seasons/2021/segments/0/leagues/%d?scoringPeriodId=%s&view=mBoxscore&view=mMatchupScore&view=mRoster&view=mSettings&view=mStatus&view=mTeam&view=modular&view=mNav", leagueID, scoringPeriod)
+		url := fmt.Sprintf("https://fantasy.espn.com/apis/v3/games/fba/seasons/2021/segments/0/leagues/%d?scoringPeriodId=%s&view=mBoxscore&view=mMatchupScore&view=mRoster&view=mSettings&view=mStatus&view=mTeam&view=modular&view=mNav", leagueID(), scoringPeriod)
 		req, err := http.NewRequest("GET", url, nil)
 		req.Header.Set("x-fantasy-filter", fmt.Sprintf("{\"schedule\":{\"filterMatchupPeriodIds\":{\"value\":[%d]}}}", matchupID))
 		req.AddCookie(swidCookie)
