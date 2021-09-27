@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
@@ -13,7 +14,22 @@ import (
 	"github.com/joho/godotenv"
 )
 
+type fileReader struct {
+}
+
+func (fr fileReader) FetchPlayerStats() (string, error) {
+	data, err := ioutil.ReadFile("data.json")
+	if err != nil {
+		log.Fatalln("Could not read data.json")
+	}
+
+	return string(data), nil
+}
+
 func main() {
+	handleProPlayerScorings()
+	return
+
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatalln("Unable to load env variables. Make sure you have a .env file in the current directory")
@@ -73,6 +89,21 @@ func parseMatchupID(arg string) int {
 	}
 
 	return matchupID
+}
+
+func handleProPlayerScorings() {
+	fd := fileReader{}
+	matchupsGen := &generator.ProPlayerScoringsGenerator{
+		ProPlayerStatsFetcher: fd,
+	}
+	err := matchupsGen.Generate()
+	if err != nil {
+		log.Fatalln("could not get pro players scorings", err)
+	}
+
+	if err != nil {
+		log.Fatalln("could not get pro players scorings", err)
+	}
 }
 
 func handleMatchup(matchupID int, wg *sync.WaitGroup) {
